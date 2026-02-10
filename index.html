@@ -1,0 +1,628 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,height=device-height,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover" />
+  <title>Neon Red Ball</title>
+
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#060713">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+
+  <style>
+    :root{
+      --bg0:#060713;
+      --bg1:#0b1040;
+      --cyan:#4ad8ff;
+      --purple:#a04cff;
+      --yellow:#ffe34d;
+      --red:#ff3d6e;
+      --txt:rgba(255,255,255,.92);
+      --txt2:rgba(255,255,255,.70);
+
+      --safe-top: env(safe-area-inset-top);
+      --safe-bottom: env(safe-area-inset-bottom);
+      --safe-left: env(safe-area-inset-left);
+      --safe-right: env(safe-area-inset-right);
+
+      /* JS sets these using visualViewport => no more wrong vh in PWA */
+      --vw: 100vw;
+      --vh: 100vh;
+
+      /* Controls: joystick & jump are SAME size */
+      --ctl: 150px;
+      --ctl-gap: 14px;
+    }
+
+    *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+    html, body{
+      margin:0; padding:0;
+      width:100%;
+      height:100%;
+      overflow:hidden;
+      background: radial-gradient(1200px 700px at 50% 10%, #1a1f66 0%, var(--bg1) 30%, var(--bg0) 70%);
+      color:var(--txt);
+      font-family:system-ui,-apple-system,Segoe UI,Roboto;
+      user-select:none;
+      -webkit-user-select:none;
+      -webkit-touch-callout:none;
+      touch-action:none;
+    }
+
+    #app{
+      position:fixed;
+      inset:0;
+      width:var(--vw);
+      height:var(--vh);
+      overflow:hidden;
+      padding: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
+    }
+
+    canvas{
+      position:absolute;
+      inset:0;
+      width:100%;
+      height:100%;
+      display:block;
+      touch-action:none;
+    }
+
+    /* HUD */
+    #hud{
+      position:absolute;
+      left:0; right:0; top:0;
+      padding: 10px 10px 0 10px;
+      display:flex;
+      justify-content:space-between;
+      gap:10px;
+      pointer-events:none;
+      z-index:5;
+    }
+    .pill{
+      pointer-events:auto;
+      padding:10px 12px;
+      border-radius:16px;
+      background:rgba(255,255,255,.06);
+      border:2px solid rgba(255,255,255,.14);
+      box-shadow:0 10px 30px rgba(0,0,0,.35);
+      font-weight:900;
+      backdrop-filter: blur(6px);
+    }
+    .small{font-size:12px;color:var(--txt2);font-weight:900}
+
+    #toast{
+      position:absolute;
+      left:50%;
+      top:72px;
+      transform:translateX(-50%);
+      z-index:6;
+      padding:10px 12px;
+      border-radius:16px;
+      background:rgba(0,0,0,.40);
+      border:2px solid rgba(255,255,255,.14);
+      font-weight:1000;
+      opacity:0;
+      transition:opacity .16s ease;
+      pointer-events:none;
+    }
+    #toast.show{opacity:1}
+
+    /* Controls bar */
+    #controls{
+      position:absolute;
+      left:0; right:0;
+      bottom:0;
+      padding: 0 12px calc(12px + var(--safe-bottom)) 12px;
+      display:flex;
+      justify-content:space-between;
+      align-items:flex-end;
+      pointer-events:none;
+      z-index:6;
+    }
+
+    .ctl-wrap{pointer-events:auto; display:flex; gap:var(--ctl-gap); align-items:flex-end;}
+    .circle{
+      width:var(--ctl);
+      height:var(--ctl);
+      border-radius:999px;
+      background:rgba(255,255,255,.08);
+      border:2px solid rgba(255,255,255,.18);
+      box-shadow:0 12px 30px rgba(0,0,0,.35);
+      position:relative;
+      touch-action:none;
+    }
+    #joyKnob{
+      position:absolute;
+      left:50%; top:50%;
+      width:46%;
+      height:46%;
+      transform:translate(-50%,-50%);
+      border-radius:999px;
+      background:rgba(255,255,255,.14);
+      border:2px solid rgba(255,255,255,.24);
+      box-shadow:0 14px 34px rgba(0,0,0,.40);
+    }
+    #jump{
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-size:44px;
+      font-weight:1000;
+      letter-spacing:-1px;
+    }
+
+    /* Landscape: shrink controls so they don't cover too much */
+    @media (orientation:landscape){
+      :root{ --ctl: 112px; --ctl-gap: 12px; }
+      #toast{ top: calc(56px + var(--safe-top)); }
+    }
+  </style>
+</head>
+
+<body>
+  <div id="app">
+    <canvas id="c"></canvas>
+
+    <div id="hud">
+      <div class="pill">🔴 Neon Red Ball<br><span class="small">Mobil PWA • Joystick</span></div>
+      <div class="pill">⭐ <span id="stars">0</span>/<span id="starsTotal">0</span><br><span class="small">CP: <span id="cp">-</span></span></div>
+    </div>
+    <div id="toast"></div>
+
+    <div id="controls">
+      <div class="ctl-wrap">
+        <div id="joy" class="circle">
+          <div id="joyKnob"></div>
+        </div>
+      </div>
+      <div class="ctl-wrap">
+        <div id="jump" class="circle">⤒</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  (() => {
+    // --- Viewport vars (fix Android PWA vh bug) ---
+    function setViewportVars(){
+      const vv = window.visualViewport;
+      const w = Math.floor(vv ? vv.width : window.innerWidth);
+      const h = Math.floor(vv ? vv.height : window.innerHeight);
+      document.documentElement.style.setProperty('--vw', w + 'px');
+      document.documentElement.style.setProperty('--vh', h + 'px');
+    }
+    window.addEventListener('resize', setViewportVars, {passive:true});
+    window.addEventListener('orientationchange', () => setTimeout(setViewportVars, 80), {passive:true});
+    if (window.visualViewport){
+      window.visualViewport.addEventListener('resize', setViewportVars, {passive:true});
+      window.visualViewport.addEventListener('scroll', setViewportVars, {passive:true});
+    }
+    setViewportVars();
+
+    // Prevent page scrolling/selection
+    document.addEventListener('contextmenu', (e)=>e.preventDefault());
+    document.addEventListener('touchmove', (e)=>e.preventDefault(), {passive:false});
+
+    // --- Canvas setup ---
+    const canvas = document.getElementById('c');
+    const ctx = canvas.getContext('2d', { alpha: true });
+    let W=0,H=0,dpr=1;
+
+    function resizeCanvas(){
+      const vv = window.visualViewport;
+      const w = Math.floor(vv ? vv.width : window.innerWidth);
+      const h = Math.floor(vv ? vv.height : window.innerHeight);
+      dpr = Math.min(2.5, window.devicePixelRatio || 1);
+      W = w; H = h;
+      canvas.style.width = w + 'px';
+      canvas.style.height = h + 'px';
+      canvas.width = Math.floor(w * dpr);
+      canvas.height = Math.floor(h * dpr);
+      ctx.setTransform(dpr,0,0,dpr,0,0);
+    }
+    window.addEventListener('resize', resizeCanvas, {passive:true});
+    window.addEventListener('orientationchange', () => setTimeout(resizeCanvas, 80), {passive:true});
+    if (window.visualViewport){
+      window.visualViewport.addEventListener('resize', resizeCanvas, {passive:true});
+      window.visualViewport.addEventListener('scroll', resizeCanvas, {passive:true});
+    }
+    resizeCanvas();
+
+    // --- HUD ---
+    const toast = document.getElementById('toast');
+    const elStars = document.getElementById('stars');
+    const elStarsTotal = document.getElementById('starsTotal');
+    const elCp = document.getElementById('cp');
+
+    function showToast(msg){
+      toast.textContent = msg;
+      toast.classList.add('show');
+      clearTimeout(showToast._t);
+      showToast._t = setTimeout(()=>toast.classList.remove('show'), 1100);
+    }
+
+    const clamp = (v,a,b)=>Math.max(a,Math.min(b,v));
+    const lerp = (a,b,t)=>a+(b-a)*t;
+    const dist = (ax,ay,bx,by)=>Math.hypot(ax-bx, ay-by);
+
+    // --- Input ---
+    const input = { axisX: 0, jumpPressed:false, jumpHeld:false };
+    const joy = document.getElementById('joy');
+    const joyKnob = document.getElementById('joyKnob');
+    const jumpBtn = document.getElementById('jump');
+
+    let joyActive=false, joyPid=null, joyCx=0, joyCy=0, joyR=0;
+    function setKnob(nx,ny){
+      const max = 0.38;
+      joyKnob.style.transform = `translate(${nx*max*100}%, ${ny*max*100}%) translate(-50%,-50%)`;
+    }
+    function joyStart(e){
+      e.preventDefault();
+      joyActive=true; joyPid=e.pointerId;
+      const rect=joy.getBoundingClientRect();
+      joyCx=rect.left+rect.width/2;
+      joyCy=rect.top+rect.height/2;
+      joyR=rect.width*0.42;
+      try{ joy.setPointerCapture(joyPid);}catch(_){}
+      joyMove(e);
+    }
+    function joyMove(e){
+      if(!joyActive || e.pointerId!==joyPid) return;
+      e.preventDefault();
+      const dx=e.clientX-joyCx;
+      const dy=e.clientY-joyCy;
+      const mag=Math.hypot(dx,dy);
+      const ndx = mag>0 ? dx/mag : 0;
+      const ndy = mag>0 ? dy/mag : 0;
+      const m = clamp(mag/joyR, 0, 1);
+      const x = ndx*m;
+      const y = ndy*m;
+      input.axisX = x;
+      setKnob(x, y*0.2);
+    }
+    function joyEnd(e){
+      if(e.pointerId!==joyPid) return;
+      e.preventDefault();
+      joyActive=false; joyPid=null;
+      input.axisX=0;
+      setKnob(0,0);
+      try{ joy.releasePointerCapture(e.pointerId);}catch(_){}
+    }
+    joy.addEventListener('pointerdown', joyStart, {passive:false});
+    joy.addEventListener('pointermove', joyMove, {passive:false});
+    joy.addEventListener('pointerup', joyEnd, {passive:false});
+    joy.addEventListener('pointercancel', joyEnd, {passive:false});
+
+    function jDown(e){ e.preventDefault(); input.jumpPressed=true; input.jumpHeld=true; try{ jumpBtn.setPointerCapture(e.pointerId);}catch(_){} }
+    function jUp(e){ e.preventDefault(); input.jumpHeld=false; try{ jumpBtn.releasePointerCapture(e.pointerId);}catch(_){} }
+    jumpBtn.addEventListener('pointerdown', jDown, {passive:false});
+    jumpBtn.addEventListener('pointerup', jUp, {passive:false});
+    jumpBtn.addEventListener('pointercancel', jUp, {passive:false});
+    jumpBtn.addEventListener('pointerleave', jUp, {passive:false});
+
+    // Keyboard fallback
+    const k={l:false,r:false};
+    window.addEventListener('keydown', (e)=>{
+      if(e.code==='ArrowLeft'||e.code==='KeyA') k.l=true;
+      if(e.code==='ArrowRight'||e.code==='KeyD') k.r=true;
+      if(e.code==='Space'||e.code==='ArrowUp'||e.code==='KeyW') input.jumpPressed=true;
+    });
+    window.addEventListener('keyup', (e)=>{
+      if(e.code==='ArrowLeft'||e.code==='KeyA') k.l=false;
+      if(e.code==='ArrowRight'||e.code==='KeyD') k.r=false;
+    });
+
+    // --- Game ---
+    const world = { gravity: 1800, friction: 0.90, airFriction: 0.992 };
+
+    const level = {
+      platforms: [], movers: [], spikes: [], saws: [], enemies: [], stars: [], checkpoints: [],
+      exit: {x:0,y:0,w:70,h:90},
+      bounds: {minX:-200, maxX:3800, minY:-200, maxY:1500}
+    };
+
+    function buildLevel(){
+      level.platforms.length=0; level.movers.length=0; level.spikes.length=0; level.saws.length=0;
+      level.enemies.length=0; level.stars.length=0; level.checkpoints.length=0;
+
+      const groundY=920;
+      level.platforms.push({x:-200,y:groundY,w:1200,h:140,type:'solid'});
+      level.platforms.push({x:1150,y:groundY+40,w:520,h:140,type:'solid'});
+      level.platforms.push({x:1760,y:groundY-40,w:420,h:140,type:'solid'});
+      level.platforms.push({x:2280,y:groundY+60,w:560,h:140,type:'solid'});
+      level.platforms.push({x:2920,y:groundY,w:860,h:140,type:'solid'});
+
+      level.platforms.push({x:260,y:680,w:260,h:34,type:'solid'});
+      level.platforms.push({x:620,y:560,w:240,h:34,type:'solid'});
+      level.platforms.push({x:980,y:480,w:220,h:34,type:'solid'});
+      level.platforms.push({x:1500,y:740,w:160,h:24,type:'bouncy'});
+
+      level.spikes.push({x:2020,y:groundY-12,w:220,h:24});
+      level.spikes.push({x:3160,y:groundY-12,w:220,h:24});
+
+      level.movers.push({x:1840,y:640,w:220,h:28, ax:1840, ay:640, bx:2140, by:540, t:0, dir:1, speed:0.34, vx:0, vy:0});
+
+      level.saws.push({x:1340,y:820,r:26,ang:0,sp:4.8});
+      level.saws.push({x:2480,y:740,r:28,ang:1.0,sp:5.6});
+      level.saws.push({x:3400,y:820,r:26,ang:2.1,sp:5.2});
+
+      level.enemies.push({x:520,y:868,w:36,h:36, minX:360, maxX:740, vx:150});
+      level.enemies.push({x:1320,y:868,w:36,h:36, minX:1200, maxX:1610, vx:180});
+      level.enemies.push({x:2720,y:868,w:36,h:36, minX:2480, maxX:2860, vx:200});
+
+      for(let i=0;i<7;i++) level.platforms.push({x:2380+i*70,y:780-i*28,w:70,h:28,type:'solid'});
+
+      level.checkpoints.push({x:120,y:groundY-80,active:true});
+      level.checkpoints.push({x:1480,y:groundY-80,active:false});
+      level.checkpoints.push({x:2480,y:groundY-80,active:false});
+
+      const pts=[[280,620],[680,500],[1030,420],[1320,820],[1550,680],[1890,780],[2100,820],[2440,640],[2700,760],[3040,820],[3600,820]];
+      for(const [x,y] of pts) level.stars.push({x,y,taken:false,spin:Math.random()*6.28});
+
+      level.exit={x:3660,y:groundY-90,w:70,h:90};
+      elStarsTotal.textContent = level.stars.length;
+    }
+
+    const player = { x:120,y:820,r:22,vx:0,vy:0,grounded:false,coyote:0,jumpBuffer:0, respawn:{x:120,y:820}, stars:0, dead:false };
+
+    const particles=[];
+    function burst(x,y,n=16){
+      for(let i=0;i<n;i++){
+        const a=Math.random()*Math.PI*2, sp=120+Math.random()*420;
+        particles.push({x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,life:0.35+Math.random()*0.65});
+      }
+    }
+
+    function setCheckpoint(cp){
+      for(const c of level.checkpoints) c.active=false;
+      cp.active=true;
+      player.respawn.x=cp.x; player.respawn.y=cp.y;
+      elCp.textContent = String(Math.round(cp.x));
+      showToast("✅ Checkpoint!");
+      burst(cp.x,cp.y,18);
+    }
+
+    function killPlayer(){
+      if(player.dead) return;
+      player.dead=true;
+      burst(player.x,player.y,28);
+      showToast("💥 Çarptın!");
+      setTimeout(()=>resetToCheckpoint(false), 200);
+    }
+
+    function resetToCheckpoint(hard){
+      player.dead=false;
+      player.vx=0; player.vy=0;
+      player.x=player.respawn.x; player.y=player.respawn.y;
+      if(hard){
+        for(const s of level.stars) s.taken=false;
+        player.stars=0; elStars.textContent=player.stars;
+      }
+      burst(player.x,player.y,14);
+    }
+
+    function circleAABB(cx,cy,r, rx,ry,rw,rh){
+      const nx=clamp(cx,rx,rx+rw), ny=clamp(cy,ry,ry+rh);
+      const dx=cx-nx, dy=cy-ny;
+      return dx*dx+dy*dy<=r*r;
+    }
+    function circleCircle(ax,ay,ar,bx,by,br){
+      const dx=ax-bx, dy=ay-by;
+      return dx*dx+dy*dy <= (ar+br)*(ar+br);
+    }
+    function resolveAABB(rx,ry,rw,rh, type, dt, platformVX=0, platformVY=0){
+      const cx=player.x, cy=player.y, r=player.r;
+      const nx=clamp(cx,rx,rx+rw), ny=clamp(cy,ry,ry+rh);
+      let dx=cx-nx, dy=cy-ny;
+      const d2=dx*dx+dy*dy;
+      if(d2>r*r) return false;
+
+      const d=Math.sqrt(Math.max(1e-6,d2));
+      const pen=r-d;
+      let nxx=dx/d, nyy=dy/d;
+
+      player.x+=nxx*pen; player.y+=nyy*pen;
+      const vn=player.vx*nxx + player.vy*nyy;
+      if(vn<0){ player.vx-=vn*nxx; player.vy-=vn*nyy; }
+
+      if(nyy<-0.6){
+        player.grounded=true; player.coyote=0.10; player.vy=Math.min(player.vy,40);
+        player.x += platformVX*dt; player.y += platformVY*dt;
+        if(type==='bouncy'){
+          player.vy=-860;
+          burst(player.x,player.y+player.r,20);
+        }
+      }
+      return true;
+    }
+
+    function win(){
+      showToast("🏁 LEVEL BİTTİ!");
+      burst(level.exit.x+level.exit.w/2, level.exit.y, 60);
+      setTimeout(()=>{ buildLevel(); resetToCheckpoint(true); showToast("🎮 Yeni koşu!"); }, 900);
+    }
+
+    let camX=0;
+    function update(dt){
+      for(let i=particles.length-1;i>=0;i--){
+        const p=particles[i]; p.life-=dt;
+        if(p.life<=0){particles.splice(i,1); continue;}
+        p.x+=p.vx*dt; p.y+=p.vy*dt; p.vx*=0.92; p.vy=(p.vy+900*dt)*0.92;
+      }
+
+      if(player.dead) return;
+
+      // moving platforms and enemies
+      for(const m of level.movers){
+        m.t += m.dir * m.speed * dt;
+        if(m.t>1){ m.t=1; m.dir=-1; }
+        if(m.t<0){ m.t=0; m.dir=1; }
+        const ease=m.t*m.t*(3-2*m.t);
+        const nx=m.ax+(m.bx-m.ax)*ease;
+        const ny=m.ay+(m.by-m.ay)*ease;
+        m.vx=(nx-m.x)/Math.max(1e-6,dt);
+        m.vy=(ny-m.y)/Math.max(1e-6,dt);
+        m.x=nx; m.y=ny;
+      }
+      for(const e of level.enemies){
+        e.x += e.vx*dt;
+        if(e.x<e.minX){e.x=e.minX; e.vx=Math.abs(e.vx);}
+        if(e.x>e.maxX){e.x=e.maxX; e.vx=-Math.abs(e.vx);}
+      }
+      for(const s of level.saws){ s.ang += s.sp*dt; }
+
+      // buffers
+      player.jumpBuffer=Math.max(0,player.jumpBuffer-dt);
+      player.coyote=Math.max(0,player.coyote-dt);
+      if(input.jumpPressed || input.jumpHeld) player.jumpBuffer=0.12;
+
+      let ax=input.axisX;
+      if(Math.abs(ax)<0.02){
+        if(k.l) ax=-1;
+        if(k.r) ax= 1;
+      }
+
+      player.vx += ax*(player.grounded?3000:2000)*dt;
+      player.vx=clamp(player.vx,-650,650);
+      if(player.grounded) player.vx*=Math.pow(world.friction,dt*60);
+      else player.vx*=Math.pow(world.airFriction,dt*60);
+
+      if(player.jumpBuffer>0 && (player.grounded||player.coyote>0)){
+        player.jumpBuffer=0; player.vy=-820;
+        player.grounded=false; player.coyote=0;
+        burst(player.x,player.y+player.r,14);
+      }
+      input.jumpPressed=false;
+
+      player.vy += world.gravity*dt;
+      player.x += player.vx*dt;
+      player.y += player.vy*dt;
+
+      if(player.y>level.bounds.maxY) killPlayer();
+
+      player.grounded=false;
+      for(const p of level.platforms) resolveAABB(p.x,p.y,p.w,p.h,p.type,dt,0,0);
+      for(const m of level.movers) resolveAABB(m.x,m.y,m.w,m.h,'solid',dt,m.vx,m.vy);
+
+      for(const sp of level.spikes) if(circleAABB(player.x,player.y,player.r,sp.x,sp.y,sp.w,sp.h)) killPlayer();
+      for(const e of level.enemies) if(circleAABB(player.x,player.y,player.r,e.x,e.y,e.w,e.h)) killPlayer();
+      for(const s of level.saws) if(circleCircle(player.x,player.y,player.r,s.x,s.y,s.r-2)) killPlayer();
+
+      for(const cp of level.checkpoints) if(!cp.active && dist(player.x,player.y,cp.x,cp.y)<60) setCheckpoint(cp);
+
+      for(const s of level.stars){
+        if(s.taken) continue;
+        if(dist(player.x,player.y,s.x,s.y)<player.r+18){
+          s.taken=true; player.stars+=1; elStars.textContent=player.stars;
+          burst(s.x,s.y,18);
+        }
+      }
+      const ex=level.exit;
+      if(circleAABB(player.x,player.y,player.r,ex.x,ex.y,ex.w,ex.h) && player.stars===level.stars.length) win();
+
+      camX=lerp(camX,player.x-W*0.35,1-Math.pow(0.001,dt));
+      camX=clamp(camX,level.bounds.minX,level.bounds.maxX-W+200);
+    }
+
+    function draw(now,dt){
+      ctx.clearRect(0,0,W,H);
+      // simple background
+      ctx.fillStyle="rgba(0,0,0,.35)";
+      ctx.fillRect(0,0,W,H);
+
+      // platforms
+      ctx.lineWidth=6; ctx.strokeStyle="rgba(0,0,0,.55)";
+      for(const p of level.platforms){
+        ctx.fillStyle=p.type==='bouncy'?"rgba(255,227,77,.25)":"rgba(255,255,255,.06)";
+        ctx.beginPath();
+        ctx.roundRect(p.x-camX,p.y,p.w,p.h,14);
+        ctx.fill(); ctx.stroke();
+      }
+      for(const m of level.movers){
+        ctx.fillStyle="rgba(255,255,255,.06)";
+        ctx.beginPath();
+        ctx.roundRect(m.x-camX,m.y,m.w,m.h,14);
+        ctx.fill(); ctx.stroke();
+      }
+
+      // spikes
+      for(const sp of level.spikes){
+        ctx.fillStyle="rgba(255,61,110,.25)";
+        ctx.beginPath(); ctx.roundRect(sp.x-camX,sp.y,sp.w,sp.h,14);
+        ctx.fill(); ctx.stroke();
+      }
+
+      // hazards/enemies/stars
+      for(const e of level.enemies){
+        ctx.fillStyle="rgba(160,76,255,.18)";
+        ctx.beginPath(); ctx.roundRect(e.x-camX,e.y,e.w,e.h,12);
+        ctx.fill(); ctx.stroke();
+      }
+      for(const s of level.saws){
+        ctx.save();
+        ctx.translate(s.x-camX, s.y);
+        ctx.rotate(s.ang);
+        ctx.fillStyle="rgba(255,227,77,.12)";
+        ctx.beginPath(); ctx.arc(0,0,s.r,0,Math.PI*2); ctx.fill(); ctx.stroke();
+        ctx.restore();
+      }
+      for(const s of level.stars){
+        if(s.taken) continue;
+        ctx.fillStyle="rgba(255,227,77,.25)";
+        ctx.beginPath(); ctx.arc(s.x-camX, s.y, 10, 0, Math.PI*2);
+        ctx.fill();
+      }
+
+      // exit
+      ctx.fillStyle="rgba(255,255,255,.06)";
+      ctx.beginPath(); ctx.roundRect(level.exit.x-camX, level.exit.y, level.exit.w, level.exit.h, 16);
+      ctx.fill(); ctx.stroke();
+
+      // particles
+      for(const p of particles){
+        ctx.globalAlpha=Math.max(0,Math.min(1,p.life));
+        ctx.fillStyle="rgba(74,216,255,1)";
+        ctx.beginPath(); ctx.arc(p.x-camX,p.y,3,0,Math.PI*2); ctx.fill();
+      }
+      ctx.globalAlpha=1;
+
+      // player
+      ctx.fillStyle="rgba(255,61,110,.85)";
+      ctx.beginPath(); ctx.arc(player.x-camX, player.y, player.r, 0, Math.PI*2);
+      ctx.fill();
+      ctx.lineWidth=7; ctx.strokeStyle="rgba(0,0,0,.55)"; ctx.stroke();
+
+      // hint if all stars not collected
+      if(player.stars !== level.stars.length){
+        ctx.fillStyle="rgba(255,255,255,.55)";
+        ctx.font="900 14px system-ui";
+        ctx.fillText("Çıkış için tüm yıldızları topla!", 18, H-18);
+      }
+    }
+
+    // PWA
+    if ('serviceWorker' in navigator){
+      navigator.serviceWorker.register('./sw.js').catch(()=>{});
+    }
+
+    // Init
+    buildLevel();
+    elStarsTotal.textContent=level.stars.length;
+    elStars.textContent = player.stars;
+    setCheckpoint(level.checkpoints[0]);
+    resetToCheckpoint(true);
+
+    let last=performance.now();
+    function loop(now){
+      const dt=Math.min(0.033,(now-last)/1000);
+      last=now;
+      update(dt);
+      draw(now,dt);
+      requestAnimationFrame(loop);
+    }
+    requestAnimationFrame(loop);
+  })();
+  </script>
+</body>
+</html>
